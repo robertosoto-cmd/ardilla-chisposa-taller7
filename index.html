@@ -50,6 +50,8 @@
             transform: translate(-50%, -50%);
             font-size: 1.2rem;
             display: none; /* Oculto por defecto */
+            text-align: center;
+            padding: 1rem;
         }
     </style>
 </head>
@@ -85,7 +87,25 @@
 
             // Carga todos los elementos de video en un array
             for (let i = 1; i <= totalScreens; i++) {
-                videos.push(document.getElementById(`video${i}`));
+                const video = document.getElementById(`video${i}`);
+                if (video) {
+                    videos.push(video);
+
+                    // --- INICIO DE LA CORRECCIÓN ---
+                    // Se añade un manejador de errores para cada video.
+                    // Esto ayudará a diagnosticar si un video no se carga correctamente.
+                    video.addEventListener('error', () => {
+                        console.error(`Error: No se pudo cargar el video '${video.src}'. Por favor, verifica lo siguiente:`);
+                        console.error(`1. Que la carpeta 'videos' exista y esté en el mismo nivel que tu archivo index.html.`);
+                        console.error(`2. Que el nombre del archivo sea exactamente '${video.src.split('/').pop()}' (mayúsculas y minúsculas importan).`);
+                        console.error(`3. Que el formato del video sea compatible con el navegador (ej. MP4).`);
+                        
+                        // Muestra un mensaje de error más claro en la pantalla.
+                        loadingMessage.textContent = `Error al cargar ${video.id}. Revisa la consola (F12) para detalles.`;
+                        loadingMessage.style.display = 'block';
+                    });
+                    // --- FIN DE LA CORRECCIÓN ---
+                }
             }
 
             let currentScreenIndex = 0; // El índice del video actual (empieza en 0 para video1)
@@ -94,9 +114,9 @@
 
             // --- Función principal para cambiar de pantalla ---
             function changeScreen(nextScreenIndex) {
-                // Si llegamos al final, reiniciamos la secuencia
+                // Previene errores si se intenta ir más allá del último video
                 if (nextScreenIndex >= totalScreens) {
-                    nextScreenIndex = 0; 
+                    return; 
                 }
 
                 const currentVideo = videos[currentScreenIndex];
@@ -119,14 +139,17 @@
                     const playPromise = nextVideo.play();
                     if (playPromise !== undefined) {
                         playPromise.catch(error => {
-                            // Si la reproducción automática falla (común en celulares),
-                            // mostramos un mensaje para que el usuario interactúe.
-                            console.error("La reproducción automática falló:", error);
-                            loadingMessage.style.display = 'block';
-                            container.addEventListener('click', () => {
-                                loadingMessage.style.display = 'none';
-                                nextVideo.play();
-                            }, { once: true });
+                            // Este error puede ocurrir por dos razones:
+                            // 1. El video no pudo cargarse (manejado por el evento 'error' de arriba).
+                            // 2. El navegador bloqueó la reproducción automática y requiere interacción del usuario.
+                            if (error.name !== 'NotSupportedError') {
+                                console.log("La reproducción automática requiere interacción del usuario. Haz clic para comenzar.");
+                                loadingMessage.style.display = 'block';
+                                container.addEventListener('click', () => {
+                                    loadingMessage.style.display = 'none';
+                                    nextVideo.play();
+                                }, { once: true });
+                            }
                         });
                     }
                 }
@@ -139,7 +162,10 @@
             videos[2].addEventListener('ended', () => changeScreen(3)); // Pantalla 3 -> 4
             videos[4].addEventListener('ended', () => changeScreen(5)); // Pantalla 5 -> 6
             videos[6].addEventListener('ended', () => changeScreen(7)); // Pantalla 7 -> 8
-            videos[8].addEventListener('ended', () => changeScreen(0)); // Pantalla 9 -> 1 (Reinicia)
+            
+            // La transición para la pantalla 9 (videos[8]) se ha eliminado.
+            // Ahora, cuando el video 9 termine, no pasará nada y se quedará en la pantalla final.
+
 
             // --- Lógica para detectar el gesto de deslizar hacia arriba ---
             
