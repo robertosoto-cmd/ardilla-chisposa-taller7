@@ -32,12 +32,13 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            display: none; /* Oculta todos los videos por defecto */
+            opacity: 0; /* Usamos opacidad para una transición más suave */
+            transition: opacity 0.3s ease-in-out;
         }
 
         /* Clase 'active' para mostrar el video actual */
         video.active {
-            display: block;
+            opacity: 1;
         }
         
         /* Mensaje de carga inicial o de error */
@@ -68,16 +69,8 @@
 <body>
 
     <div class="video-container" id="container">
-        <video id="videoMenu" src="videos/menu.mp4" playsinline loop></video> 
-        <video id="video1" src="videos/pantalla1.mp4" playsinline></video>
-        <video id="video2" src="videos/pantalla2.mp4" playsinline loop></video>
-        <video id="video3" src="videos/pantalla3.mp4" playsinline></video>
-        <video id="video4" src="videos/pantalla4.mp4" playsinline loop></video>
-        <video id="video5" src="videos/pantalla5.mp4" playsinline></video>
-        <video id="video6" src="videos/pantalla6.mp4" playsinline loop></video>
-        <video id="video7" src="videos/pantalla7.mp4" playsinline></video>
-        <video id="video8" src="videos/pantalla8.mp4" playsinline loop></video>
-        <video id="video9" src="videos/pantalla9.mp4" playsinline></video>
+        <!-- El video del menú se mantiene, pero los demás se crearán con JavaScript -->
+        <video id="videoMenu" src="videos/menu.mp4" playsinline loop muted preload="auto"></video>
         
         <div id="loading-message">Toca para comenzar</div>
         <div id="menu-tap-area"></div>
@@ -89,65 +82,128 @@
             const loadingMessage = document.getElementById('loading-message');
             const menuTapArea = document.getElementById('menu-tap-area');
             const videoMenu = document.getElementById('videoMenu');
-            const totalScreens = 9;
-            const videos = [];
+            
+            // --- OPTIMIZACIÓN 1: Almacenar solo las rutas de los videos ---
+            // En lugar de cargar todos los <video> en el HTML, guardamos sus fuentes.
+            // Esto reduce drásticamente el uso de memoria inicial.
+            const videoSources = [
+                { src: 'videos/pantalla1.mp4', loop: false },
+                { src: 'videos/pantalla2.mp4', loop: true },
+                { src: 'videos/pantalla3.mp4', loop: false },
+                { src: 'videos/pantalla4.mp4', loop: true },
+                { src: 'videos/pantalla5.mp4', loop: false },
+                { src: 'videos/pantalla6.mp4', loop: true },
+                { src: 'videos/pantalla7.mp4', loop: false },
+                { src: 'videos/pantalla8.mp4', loop: true },
+                { src: 'videos/pantalla9.mp4', loop: false },
+            ];
+            const totalScreens = videoSources.length;
+
+            let currentVideoElement = null; // Elemento del video actual
+            let nextVideoElement = null;    // Elemento del video siguiente (para precarga)
             let experienceStarted = false;
-
-            for (let i = 1; i <= totalScreens; i++) {
-                const video = document.getElementById(`video${i}`);
-                if (video) {
-                    videos.push(video);
-                    video.addEventListener('error', () => handleVideoError(video));
-                }
-            }
-            videoMenu.addEventListener('error', () => handleVideoError(videoMenu));
-
-            function handleVideoError(video) {
-                console.error(`Error: No se pudo cargar el video '${video.src}'. Verifica la ruta y el nombre del archivo.`);
-                loadingMessage.textContent = `Error al cargar ${video.id}. Revisa la consola (F12).`;
-                loadingMessage.style.display = 'block';
-            }
-
-            let currentScreenIndex = 0;
+            let currentScreenIndex = -1;
             let touchStartY = 0;
             let touchEndY = 0;
+            let isTransitioning = false; // Para evitar cambios de pantalla múltiples
 
-            function changeScreen(nextScreenIndex) {
-                if (nextScreenIndex >= totalScreens) {
-                    return; 
+            // --- OPTIMIZACIÓN 2: Función para precargar el siguiente video ---
+            // Esta función crea el siguiente video en segundo plano para que esté listo
+            // cuando se necesite, haciendo la transición instantánea.
+            function preloadNextVideo(index) {
+                if (index >= totalScreens) {
+                    nextVideoElement = null;
+                    return;
                 }
+                nextVideoElement = document.createElement('video');
+                nextVideoElement.src = videoSources[index].src;
+                nextVideoElement.playsinline = true;
+                nextVideoElement.muted = true; // El atributo 'muted' es CRUCIAL para el autoplay en móviles
+                nextVideoElement.loop = videoSources[index].loop;
+                nextVideoElement.preload = 'auto';
+                nextVideoElement.load(); // Inicia la carga de datos del video
+            }
 
-                const currentVideo = videos[currentScreenIndex];
-                const nextVideo = videos[nextScreenIndex];
+            // --- OPTIMIZACIÓN 3: Función de cambio de pantalla mejorada ---
+            // Esta función ahora crea y destruye videos sobre la marcha.
+            function changeScreen(nextScreenIndex) {
+                if (isTransitioning || nextScreenIndex >= totalScreens || nextScreenIndex === currentScreenIndex) {
+                    return;
+                }
+                isTransitioning = true;
 
-                if (currentVideo) {
-                    currentVideo.classList.remove('active');
-                    currentVideo.pause();
+                // Destruye el video anterior para liberar memoria
+                if (currentVideoElement) {
+                    currentVideoElement.classList.remove('active');
+                    // Espera a que termine la transición de opacidad antes de removerlo
+                    setTimeout(() => {
+                        if (currentVideoElement && container.contains(currentVideoElement)) {
+                            container.removeChild(currentVideoElement);
+                        }
+                    }, 300);
                 }
 
                 currentScreenIndex = nextScreenIndex;
+                const videoData = videoSources[currentScreenIndex];
 
-                if (nextVideo) {
-                    nextVideo.classList.add('active');
-                    nextVideo.currentTime = 0;
-                    
-                    const playPromise = nextVideo.play();
-                    if (playPromise !== undefined) {
-                        playPromise.catch(error => {
-                            console.error("Error al reproducir el video:", error);
-                        });
-                    }
+                // Usa el video precargado o crea uno nuevo si no existe
+                if (nextVideoElement && nextVideoElement.src.includes(videoData.src)) {
+                    currentVideoElement = nextVideoElement;
+                } else {
+                    currentVideoElement = document.createElement('video');
+                    currentVideoElement.src = videoData.src;
+                    currentVideoElement.playsinline = true;
+                    currentVideoElement.muted = true;
+                    currentVideoElement.loop = videoData.loop;
                 }
+
+                // Añade los listeners de eventos necesarios
+                if (!videoData.loop) {
+                    currentVideoElement.addEventListener('ended', () => {
+                        changeScreen(currentScreenIndex + 1);
+                    }, { once: true });
+                }
+
+                currentVideoElement.addEventListener('error', () => handleVideoError(currentVideoElement));
+                
+                container.appendChild(currentVideoElement);
+
+                // Esperamos a que el video pueda reproducirse sin problemas
+                currentVideoElement.addEventListener('canplaythrough', () => {
+                     const playPromise = currentVideoElement.play();
+                     if (playPromise !== undefined) {
+                         playPromise.then(() => {
+                             // Hacemos el video visible y empezamos la precarga del siguiente
+                             currentVideoElement.classList.add('active');
+                             isTransitioning = false;
+                             preloadNextVideo(currentScreenIndex + 1);
+                         }).catch(error => {
+                             console.error("Error al reproducir el video:", error);
+                             isTransitioning = false;
+                         });
+                     }
+                }, { once: true });
+                
+                // Si el video ya está cargado en caché, 'canplaythrough' puede no dispararse
+                if (currentVideoElement.readyState >= 4) { // HAVE_ENOUGH_DATA
+                    currentVideoElement.dispatchEvent(new Event('canplaythrough'));
+                }
+            }
+            
+            function handleVideoError(video) {
+                console.error(`Error: No se pudo cargar el video '${video.src}'. Verifica la ruta y el nombre del archivo.`);
+                loadingMessage.textContent = `Error al cargar video. Revisa la consola.`;
+                loadingMessage.style.display = 'block';
             }
 
             function handleSwipe() {
-                if (!experienceStarted) return;
+                if (!experienceStarted || isTransitioning) return;
 
-                const isLoopingScreen = currentScreenIndex === 1 || currentScreenIndex === 3 || currentScreenIndex === 5 || currentScreenIndex === 7;
-                if (!isLoopingScreen) return;
+                // Solo permite swipe en las pantallas que están en loop
+                if (currentScreenIndex < 0 || !videoSources[currentScreenIndex].loop) return;
 
                 const swipeDistance = touchStartY - touchEndY;
-                if (swipeDistance > 50) {
+                if (swipeDistance > 50) { // Umbral de deslizamiento
                     changeScreen(currentScreenIndex + 1);
                 }
             }
@@ -156,18 +212,20 @@
                 if (experienceStarted) return;
                 experienceStarted = true;
 
-                videoMenu.classList.remove('active');
                 videoMenu.pause();
+                videoMenu.style.opacity = 0;
                 menuTapArea.style.display = 'none';
 
-                changeScreen(0);
+                setTimeout(() => {
+                    videoMenu.classList.remove('active');
+                    if(container.contains(videoMenu)){
+                        container.removeChild(videoMenu);
+                    }
+                    changeScreen(0);
+                }, 300);
             }
 
-            videos[0].addEventListener('ended', () => changeScreen(1));
-            videos[2].addEventListener('ended', () => changeScreen(3));
-            videos[4].addEventListener('ended', () => changeScreen(5));
-            videos[6].addEventListener('ended', () => changeScreen(7));
-
+            // Listeners de gestos (touch y mouse)
             container.addEventListener('touchstart', e => { touchStartY = e.changedTouches[0].screenY; }, { passive: true });
             container.addEventListener('touchend', e => {
                 touchEndY = e.changedTouches[0].screenY;
@@ -180,16 +238,16 @@
                 handleSwipe();
             });
 
+            // Función de inicialización
             function initialize() {
                 videoMenu.classList.add('active');
-
                 const playPromise = videoMenu.play();
                 
                 if (playPromise !== undefined) {
                     playPromise.then(() => {
                         menuTapArea.style.display = 'block';
                     }).catch(error => {
-                        console.log("La reproducción automática requiere interacción del usuario.");
+                        console.log("La reproducción automática falló. Se requiere interacción del usuario.");
                         loadingMessage.style.display = 'block';
                         
                         container.addEventListener('click', () => {
@@ -209,3 +267,4 @@
 
 </body>
 </html>
+
