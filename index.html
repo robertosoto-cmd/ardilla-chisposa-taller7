@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <!-- Metaetiqueta para asegurar que la página se vea bien en celulares y no se pueda hacer zoom -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Experiencia Vertical Interactiva</title>
     <style>
@@ -31,14 +32,14 @@
             left: 0;
             width: 100%;
             height: 100%;
+            /* 'cover' asegura que el video llene la pantalla sin deformarse */
             object-fit: cover;
-            opacity: 0; /* Usamos opacidad para una transición más suave */
-            transition: opacity 0.3s ease-in-out;
+            display: none; /* Oculta todos los videos por defecto */
         }
 
         /* Clase 'active' para mostrar el video actual */
         video.active {
-            opacity: 1;
+            display: block;
         }
         
         /* Mensaje de carga inicial o de error */
@@ -51,215 +52,158 @@
             display: none; /* Oculto por defecto */
             text-align: center;
             padding: 1rem;
-            z-index: 100;
-        }
-
-        /* Área de toque para salir del menú */
-        #menu-tap-area {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 10; /* Se asegura de estar sobre el video del menú */
-            display: none; /* Oculta por defecto */
+            background-color: rgba(0,0,0,0.5);
+            border-radius: 10px;
         }
     </style>
 </head>
 <body>
 
     <div class="video-container" id="container">
-        <!-- El video del menú se mantiene, pero los demás se crearán con JavaScript -->
-        <video id="videoMenu" src="videos/menu.mp4" playsinline loop muted preload="auto"></video>
+        <!-- 
+            IMPORTANTE: 
+            Coloca tus videos en una carpeta llamada 'videos' dentro del mismo directorio que este archivo HTML.
+            El nuevo video de menú debe llamarse menu.mp4
+        -->
+        <video id="menuVideo" src="videos/menu.mp4" playsinline muted loop></video>
+        <video id="video1" src="videos/pantalla1.mp4" playsinline muted></video>
+        <video id="video2" src="videos/pantalla2.mp4" playsinline muted loop></video>
+        <video id="video3" src="videos/pantalla3.mp4" playsinline muted></video>
+        <video id="video4" src="videos/pantalla4.mp4" playsinline muted loop></video>
+        <video id="video5" src="videos/pantalla5.mp4" playsinline muted></video>
+        <video id="video6" src="videos/pantalla6.mp4" playsinline muted loop></video>
+        <video id="video7" src="videos/pantalla7.mp4" playsinline muted></video>
+        <video id="video8" src="videos/pantalla8.mp4" playsinline muted loop></video>
+        <video id="video9" src="videos/pantalla9.mp4" playsinline muted></video>
         
         <div id="loading-message">Toca para comenzar</div>
-        <div id="menu-tap-area"></div>
     </div>
 
     <script>
+        // Espera a que todo el contenido de la página se cargue
         document.addEventListener('DOMContentLoaded', () => {
             const container = document.getElementById('container');
             const loadingMessage = document.getElementById('loading-message');
-            const menuTapArea = document.getElementById('menu-tap-area');
-            const videoMenu = document.getElementById('videoMenu');
-            
-            // --- OPTIMIZACIÓN 1: Almacenar solo las rutas de los videos ---
-            // En lugar de cargar todos los <video> en el HTML, guardamos sus fuentes.
-            // Esto reduce drásticamente el uso de memoria inicial.
-            const videoSources = [
-                { src: 'videos/pantalla1.mp4', loop: false },
-                { src: 'videos/pantalla2.mp4', loop: true },
-                { src: 'videos/pantalla3.mp4', loop: false },
-                { src: 'videos/pantalla4.mp4', loop: true },
-                { src: 'videos/pantalla5.mp4', loop: false },
-                { src: 'videos/pantalla6.mp4', loop: true },
-                { src: 'videos/pantalla7.mp4', loop: false },
-                { src: 'videos/pantalla8.mp4', loop: true },
-                { src: 'videos/pantalla9.mp4', loop: false },
-            ];
-            const totalScreens = videoSources.length;
+            const menuVideo = document.getElementById('menuVideo');
+            const totalScreens = 9;
+            const videos = [];
 
-            let currentVideoElement = null; // Elemento del video actual
-            let nextVideoElement = null;    // Elemento del video siguiente (para precarga)
-            let experienceStarted = false;
-            let currentScreenIndex = -1;
-            let touchStartY = 0;
-            let touchEndY = 0;
-            let isTransitioning = false; // Para evitar cambios de pantalla múltiples
-
-            // --- OPTIMIZACIÓN 2: Función para precargar el siguiente video ---
-            // Esta función crea el siguiente video en segundo plano para que esté listo
-            // cuando se necesite, haciendo la transición instantánea.
-            function preloadNextVideo(index) {
-                if (index >= totalScreens) {
-                    nextVideoElement = null;
-                    return;
-                }
-                nextVideoElement = document.createElement('video');
-                nextVideoElement.src = videoSources[index].src;
-                nextVideoElement.playsinline = true;
-                nextVideoElement.muted = true; // El atributo 'muted' es CRUCIAL para el autoplay en móviles
-                nextVideoElement.loop = videoSources[index].loop;
-                nextVideoElement.preload = 'auto';
-                nextVideoElement.load(); // Inicia la carga de datos del video
-            }
-
-            // --- OPTIMIZACIÓN 3: Función de cambio de pantalla mejorada ---
-            // Esta función ahora crea y destruye videos sobre la marcha.
-            function changeScreen(nextScreenIndex) {
-                if (isTransitioning || nextScreenIndex >= totalScreens || nextScreenIndex === currentScreenIndex) {
-                    return;
-                }
-                isTransitioning = true;
-
-                // Destruye el video anterior para liberar memoria
-                if (currentVideoElement) {
-                    currentVideoElement.classList.remove('active');
-                    // Espera a que termine la transición de opacidad antes de removerlo
-                    setTimeout(() => {
-                        if (currentVideoElement && container.contains(currentVideoElement)) {
-                            container.removeChild(currentVideoElement);
-                        }
-                    }, 300);
-                }
-
-                currentScreenIndex = nextScreenIndex;
-                const videoData = videoSources[currentScreenIndex];
-
-                // Usa el video precargado o crea uno nuevo si no existe
-                if (nextVideoElement && nextVideoElement.src.includes(videoData.src)) {
-                    currentVideoElement = nextVideoElement;
-                } else {
-                    currentVideoElement = document.createElement('video');
-                    currentVideoElement.src = videoData.src;
-                    currentVideoElement.playsinline = true;
-                    currentVideoElement.muted = true;
-                    currentVideoElement.loop = videoData.loop;
-                }
-
-                // Añade los listeners de eventos necesarios
-                if (!videoData.loop) {
-                    currentVideoElement.addEventListener('ended', () => {
-                        changeScreen(currentScreenIndex + 1);
-                    }, { once: true });
-                }
-
-                currentVideoElement.addEventListener('error', () => handleVideoError(currentVideoElement));
-                
-                container.appendChild(currentVideoElement);
-
-                // Esperamos a que el video pueda reproducirse sin problemas
-                currentVideoElement.addEventListener('canplaythrough', () => {
-                     const playPromise = currentVideoElement.play();
-                     if (playPromise !== undefined) {
-                         playPromise.then(() => {
-                             // Hacemos el video visible y empezamos la precarga del siguiente
-                             currentVideoElement.classList.add('active');
-                             isTransitioning = false;
-                             preloadNextVideo(currentScreenIndex + 1);
-                         }).catch(error => {
-                             console.error("Error al reproducir el video:", error);
-                             isTransitioning = false;
-                         });
-                     }
-                }, { once: true });
-                
-                // Si el video ya está cargado en caché, 'canplaythrough' puede no dispararse
-                if (currentVideoElement.readyState >= 4) { // HAVE_ENOUGH_DATA
-                    currentVideoElement.dispatchEvent(new Event('canplaythrough'));
-                }
-            }
-            
-            function handleVideoError(video) {
-                console.error(`Error: No se pudo cargar el video '${video.src}'. Verifica la ruta y el nombre del archivo.`);
-                loadingMessage.textContent = `Error al cargar video. Revisa la consola.`;
-                loadingMessage.style.display = 'block';
-            }
-
-            function handleSwipe() {
-                if (!experienceStarted || isTransitioning) return;
-
-                // Solo permite swipe en las pantallas que están en loop
-                if (currentScreenIndex < 0 || !videoSources[currentScreenIndex].loop) return;
-
-                const swipeDistance = touchStartY - touchEndY;
-                if (swipeDistance > 50) { // Umbral de deslizamiento
-                    changeScreen(currentScreenIndex + 1);
-                }
-            }
-
-            function startExperience() {
-                if (experienceStarted) return;
-                experienceStarted = true;
-
-                videoMenu.pause();
-                videoMenu.style.opacity = 0;
-                menuTapArea.style.display = 'none';
-
-                setTimeout(() => {
-                    videoMenu.classList.remove('active');
-                    if(container.contains(videoMenu)){
-                        container.removeChild(videoMenu);
-                    }
-                    changeScreen(0);
-                }, 300);
-            }
-
-            // Listeners de gestos (touch y mouse)
-            container.addEventListener('touchstart', e => { touchStartY = e.changedTouches[0].screenY; }, { passive: true });
-            container.addEventListener('touchend', e => {
-                touchEndY = e.changedTouches[0].screenY;
-                handleSwipe();
-            }, { passive: true });
-            
-            container.addEventListener('mousedown', e => { touchStartY = e.screenY; });
-            container.addEventListener('mouseup', e => {
-                touchEndY = e.screenY;
-                handleSwipe();
-            });
-
-            // Función de inicialización
-            function initialize() {
-                videoMenu.classList.add('active');
-                const playPromise = videoMenu.play();
-                
-                if (playPromise !== undefined) {
-                    playPromise.then(() => {
-                        menuTapArea.style.display = 'block';
-                    }).catch(error => {
-                        console.log("La reproducción automática falló. Se requiere interacción del usuario.");
+            // Carga todos los elementos de video en un array
+            for (let i = 1; i <= totalScreens; i++) {
+                const video = document.getElementById(`video${i}`);
+                if (video) {
+                    videos.push(video);
+                    video.addEventListener('error', () => {
+                        console.error(`Error: No se pudo cargar el video '${video.src}'. Por favor, verifica la ruta y el nombre del archivo.`);
+                        loadingMessage.textContent = `Error al cargar ${video.id}. Revisa la consola (F12).`;
                         loadingMessage.style.display = 'block';
-                        
-                        container.addEventListener('click', () => {
-                            loadingMessage.style.display = 'none';
-                            videoMenu.play();
-                            menuTapArea.style.display = 'block';
-                        }, { once: true });
                     });
                 }
             }
+
+            // --- NUEVO: Añadimos un manejador de error para el video del menú ---
+            menuVideo.addEventListener('error', () => {
+                console.error(`Error: No se pudo cargar el video 'videos/menu.mp4'. Por favor, verifica la ruta y el nombre del archivo.`);
+                loadingMessage.textContent = `Error al cargar el video del menú. Revisa la consola (F12).`;
+                loadingMessage.style.display = 'block';
+            });
+
+            // -1 indica que estamos en el menú; 0 a 8 son las pantallas principales
+            let currentScreenIndex = -1; 
+            let touchStartY = 0;
+            let touchEndY = 0;
+
+            // --- Función principal para cambiar de pantalla ---
+            function changeScreen(nextScreenIndex) {
+                // Previene errores si se intenta ir más allá del último video
+                if (nextScreenIndex >= totalScreens) {
+                    return; 
+                }
+
+                // Oculta el video actual si existe (si no es el menú)
+                if (currentScreenIndex > -1) {
+                    const currentVideo = videos[currentScreenIndex];
+                    if (currentVideo) {
+                        currentVideo.classList.remove('active');
+                        currentVideo.pause();
+                    }
+                }
+                
+                currentScreenIndex = nextScreenIndex;
+                const nextVideo = videos[currentScreenIndex];
+
+                // Muestra y reproduce el siguiente video
+                if (nextVideo) {
+                    nextVideo.classList.add('active');
+                    nextVideo.currentTime = 0;
+                    
+                    const playPromise = nextVideo.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(error => {
+                            console.error("Error al intentar reproducir el video:", error);
+                            // Este error es poco probable que ocurra aquí, ya que el usuario ya ha interactuado.
+                        });
+                    }
+                }
+            }
+
+            // --- Configuración de los eventos para las transiciones ---
+            videos[0].addEventListener('ended', () => changeScreen(1)); // Pantalla 1 -> 2
+            videos[2].addEventListener('ended', () => changeScreen(3)); // Pantalla 3 -> 4
+            videos[4].addEventListener('ended', () => changeScreen(5)); // Pantalla 5 -> 6
+            videos[6].addEventListener('ended', () => changeScreen(7)); // Pantalla 7 -> 8
             
-            menuTapArea.addEventListener('click', startExperience, { once: true });
+            // --- Lógica para detectar el gesto de deslizar hacia arriba ---
+            function handleSwipe() {
+                // Solo reacciona al gesto en las pantallas que están en bucle
+                const isLoopingScreen = currentScreenIndex === 1 || currentScreenIndex === 3 || currentScreenIndex === 5 || currentScreenIndex === 7;
+                if (!isLoopingScreen) return;
+
+                // Si se deslizó hacia arriba una distancia considerable (más de 50px)
+                if (touchStartY - touchEndY > 50) {
+                    changeScreen(currentScreenIndex + 1);
+                }
+            }
+            
+            // --- NUEVO: Función que se ejecuta una sola vez para iniciar la experiencia ---
+            function startExperience() {
+                // Oculta y pausa el video del menú
+                menuVideo.classList.remove('active');
+                menuVideo.pause();
+                
+                // Quita el mensaje de "Toca para comenzar" si estuviera visible
+                loadingMessage.style.display = 'none';
+
+                // Añade los listeners para el control de swipe (táctil y mouse)
+                container.addEventListener('touchstart', e => { touchStartY = e.changedTouches[0].screenY; }, { passive: true });
+                container.addEventListener('touchend', e => { touchEndY = e.changedTouches[0].screenY; handleSwipe(); }, { passive: true });
+                container.addEventListener('mousedown', e => { touchStartY = e.screenY; });
+                container.addEventListener('mouseup', e => { touchEndY = e.screenY; handleSwipe(); });
+                
+                // Comienza con la primera pantalla del flujo normal
+                changeScreen(0);
+            }
+
+            // --- Inicio de la experiencia ---
+            function initialize() {
+                // Muestra el video del menú
+                menuVideo.classList.add('active');
+                
+                // Intenta reproducir el video de menú automáticamente
+                const playPromise = menuVideo.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        // La reproducción automática fue bloqueada por el navegador.
+                        // Mostramos un mensaje para que el usuario interactúe.
+                        console.log("La reproducción automática requiere interacción del usuario. Toca para comenzar.");
+                        loadingMessage.style.display = 'block';
+                    });
+                }
+                
+                // Añadimos un listener de un solo uso. Cuando se toque la pantalla,
+                // se llamará a startExperience y el listener se eliminará automáticamente.
+                container.addEventListener('click', startExperience, { once: true });
+            }
             
             initialize();
         });
@@ -267,4 +211,3 @@
 
 </body>
 </html>
-
